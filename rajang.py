@@ -37,13 +37,25 @@ async def addlfg(message, lfg_type, description, member, time):
     e.set_author(name=member.display_name, icon_url=member.avatar_url)
     msg = await quest_board_channel.send(embed=e)
     #msg = await message.channel.send(embed=e)
-    lfg_session = Lfg(message_id=msg.id, confirmed=[member.id], lfg_type=lfg_type)
     await msg.add_reaction('👍')
     await msg.add_reaction('❔')
     await msg.add_reaction('❌')
     await msg.add_reaction('🚧')
-    lfg_session.save()
     await message.channel.send('LFG has been posted at {}.'.format(quest_board_channel.mention), delete_after=5.0)
+    category = message.channel.category
+    user = message.author
+    guild = message.guild
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(read_messages=False),
+        user: discord.PermissionOverwrite(read_messages=True, send_messages=True, embed_links=True, create_instant_invite=False,add_reactions=True),
+        client.user: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,     #bot permissions
+                                                 send_messages=True,manage_messages=True, embed_links=True)
+    }
+    channel_name = ('-').join(description.split())
+    lfg_channel = await guild.create_text_channel(channel_name, overwrites=overwrites, category=category)
+    lfg_session = Lfg(message_id=msg.id, confirmed=[member.id], lfg_type=lfg_type, channel_id=lfg_channel.id)
+    lfg_session.save()
+    await lfg_channel.send('{} has joined the chat.'.format(user.mention))
     logger.info('{} added {}.'.format(member.display_name, lfg_type))
 
 async def check_mod(guild, member, baseline=None):
@@ -590,7 +602,7 @@ async def on_raw_reaction_add(payload):
                 except discord.errors.NotFound:
                     pass
 
-        elif emoji_add == '👍':
+        elif emoji_add == '👍':      #join lfg quest/siege
             member = payload.member
             post = Lfg.objects(message_id=payload.message_id).first()
             list_of_confirm = post.confirmed
