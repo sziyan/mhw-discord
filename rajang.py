@@ -35,20 +35,21 @@ async def addlfg(message, lfg_type, description, member, time):
             e.set_thumbnail(url='https://ih0.redbubble.net/image.551722156.9913/flat,550x550,075,f.u3.jpg')
     e.set_footer(text='|👍 - Confirm |❔ - Tentative | ❌ - Delete | 🚧 - Update |')
     e.set_author(name=member.display_name, icon_url=member.avatar_url)
-    #msg = await quest_board_channel.send(embed=e)
-    msg = await message.channel.send(embed=e)
+    msg = await quest_board_channel.send(embed=e)
+    #msg = await message.channel.send(embed=e)
     await msg.add_reaction('👍')
     await msg.add_reaction('❔')
     await msg.add_reaction('❌')
     await msg.add_reaction('🚧')
     await message.channel.send('LFG has been posted at {}.'.format(quest_board_channel.mention), delete_after=5.0)
     category = message.channel.category
-    user = message.author
     guild = message.guild
     mods = guild.get_role(706466087356727339)
+    veterans = guild.get_role(706481118152491061)
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        user: discord.PermissionOverwrite(read_messages=True, send_messages=True, embed_links=True, create_instant_invite=False,add_reactions=True),
+        member: discord.PermissionOverwrite(read_messages=True, send_messages=True, embed_links=True, create_instant_invite=False,add_reactions=True),
+        veterans: discord.PermissionOverwrite(read_messages=True, send_messages=True, embed_links=True, create_instant_invite=False,add_reactions=True),
         client.user: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,     #bot permissions
                                                  send_messages=True,manage_messages=True, embed_links=True),
         mods: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,           #mods permissions
@@ -58,7 +59,7 @@ async def addlfg(message, lfg_type, description, member, time):
     lfg_channel = await guild.create_text_channel(channel_name, overwrites=overwrites, category=category)
     lfg_session = Lfg(message_id=msg.id, confirmed=[member.id], lfg_type=lfg_type, channel_id=lfg_channel.id)
     lfg_session.save()
-    await lfg_channel.send('{} has joined the chat.'.format(user.mention))
+    await lfg_channel.send('{} has joined the chat.'.format(member.mention))
     logger.info('{} added {}.'.format(member.display_name, lfg_type))
 
 async def check_mod(guild, member, baseline=None):
@@ -744,7 +745,7 @@ async def on_raw_reaction_add(payload):
                         await message.edit(embed=embed)
                         questboard_chnl = message.channel
                         await dm_channel.send('Post updated in {}.'.format(questboard_chnl.mention))
-                        chnl.send('Quest details updated in {}'.format(questboard_chnl.mention))
+                        await chnl.send('Quest details updated in {}'.format(questboard_chnl.mention))
                 except asyncio.TimeoutError:
                     await dm_channel.send('Updating of post timed out. Please try again.', delete_after=5.0)
                     logging.info('{} timed out when updating post.'.format(member.name))

@@ -3,3 +3,4 @@ __pycache__/
 venv/
 discord_output.log
 config.py
+test.py
