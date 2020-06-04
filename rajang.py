@@ -41,25 +41,31 @@ async def addlfg(message, lfg_type, description, member, time):
     await msg.add_reaction('❔')
     await msg.add_reaction('❌')
     await msg.add_reaction('🚧')
-    await message.channel.send('LFG has been posted at {}.'.format(quest_board_channel.mention), delete_after=5.0)
-    category = message.channel.category
+    quest_placeholder = await client.fetch_channel(718020166163628103)
+    category = quest_placeholder.category
     guild = message.guild
     mods = guild.get_role(706466087356727339)
-    veterans = guild.get_role(706481118152491061)
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        member: discord.PermissionOverwrite(read_messages=True, send_messages=True, embed_links=True, create_instant_invite=False,add_reactions=True),
-        veterans: discord.PermissionOverwrite(read_messages=True, send_messages=True, embed_links=True, create_instant_invite=False,add_reactions=True),
-        client.user: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,     #bot permissions
-                                                 send_messages=True,manage_messages=True, embed_links=True),
-        mods: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,           #mods permissions
-                                                 send_messages=True,manage_messages=True, embed_links=True)
+        member: discord.PermissionOverwrite(read_messages=True, send_messages=True, embed_links=True,
+                                            create_instant_invite=False, add_reactions=True),
+        client.user: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,
+                                                 # bot permissions
+                                                 send_messages=True, manage_messages=True, embed_links=True),
+        mods: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,
+                                          # mods permissions
+                                          send_messages=True, manage_messages=True, embed_links=True)
     }
     channel_name = ('-').join(description.split())
+    if len(channel_name) > 100:
+        await message.channel.send('Description too long! Please reduce length of description.'.format(member.mention))
+        return
     lfg_channel = await guild.create_text_channel(channel_name, overwrites=overwrites, category=category)
     lfg_session = Lfg(message_id=msg.id, confirmed=[member.id], lfg_type=lfg_type, channel_id=lfg_channel.id)
     lfg_session.save()
+    await lfg_channel.send(embed=e)
     await lfg_channel.send('{} has joined the chat.'.format(member.mention))
+    await message.channel.send('LFG has been posted at {}.'.format(quest_board_channel.mention), delete_after=5.0)
     logger.info('{} added {}.'.format(member.display_name, lfg_type))
 
 async def check_mod(guild, member, baseline=None):
@@ -241,38 +247,33 @@ async def on_message(message):
         now = datetime.datetime.now().strftime('%d %b %I:%M %p')
         prompt_session_id, prompt_session_title, session_id_reply, session_title_reply = None,None,None,None
         try:
-            content = message.content[12:]
-            if content == "":
-                prompt_session_id = await message.channel.send('Creating session.. Whats the session ID?', delete_after=90.0)
-                def check_session_id(m):
-                    return m.channel == message.channel and m.author == message.author
-                session_id_reply = await client.wait_for('message', check=check_session_id, timeout=90.0)
-                session = session_id_reply.content
+            prompt_session_id = await message.channel.send('Creating session.. Whats the session ID?', delete_after=90.0)
+            def check_session_id(m):
+                return m.channel == message.channel and m.author == message.author
+            session_id_reply = await client.wait_for('message', check=check_session_id, timeout=90.0)
+            session = session_id_reply.content
 
-                prompt_session_title = await message.channel.send('Enter session description? (Type `cancel` if no description)', delete_after=90.0)
-                def check_session_title(m):
-                    return m.channel == message.channel and m.author == message.author
-                session_title_reply = await client.wait_for('message', check=check_session_title, timeout=90.0)
+            prompt_session_title = await message.channel.send('Enter session description? (Type `cancel` if no description)', delete_after=90.0)
+            def check_session_title(m):
+                return m.channel == message.channel and m.author == message.author
+            session_title_reply = await client.wait_for('message', check=check_session_title, timeout=90.0)
 
-                if session_title_reply.content.lower() == 'cancel':
-                    session_title = 'Monster Hunting'
-                else:
-                    session_title = session_title_reply.content
-
-                await message.channel.send('Session created in {}'.format(channel.mention), delete_after=5.0)
-                title = '{}'.format(session_title)
-                session_id = '```fix\n{}```'.format(session)
-                embed = discord.Embed(description='```yaml\n{}```'.format(title), color=0xf1c40f)
-                embed.add_field(name='Session ID', value=session_id)
-                embed.set_footer(text='Added on {}'.format(now))
-                embed.set_author(name=message.author.display_name, icon_url=message.author.avatar_url)
-                msg = await channel.send(embed=embed)
-                cemoji = await message.guild.fetch_emoji(707541604508106818)  # custom emoji to mark session close
-                await msg.add_reaction(cemoji)
-                logger.info('{} added session "{}"'.format(message.author.display_name, session))
+            if session_title_reply.content.lower() == 'cancel':
+                session_title = '--'
             else:
-                await message.channel.send('{}, incorrect command syntax. Please use `/addsession` instead.'.format(message.author.mention), delete_after= 10.0)
-                return
+                session_title = session_title_reply.content
+
+            await message.channel.send('Session created in {}'.format(channel.mention), delete_after=5.0)
+            title = '{}'.format(session_title)
+            session_id = '```fix\n{}```'.format(session)
+            embed = discord.Embed(description='```yaml\n{}```'.format(title), color=0xf1c40f)
+            embed.add_field(name='Session ID', value=session_id)
+            embed.set_footer(text='Added on {}'.format(now))
+            embed.set_author(name=message.author.display_name, icon_url=message.author.avatar_url)
+            msg = await channel.send(embed=embed)
+            cemoji = await message.guild.fetch_emoji(707541604508106818)  # custom emoji to mark session close
+            await msg.add_reaction(cemoji)
+            logger.info('{} added session "{}"'.format(message.author.display_name, session))
         except asyncio.TimeoutError:
             logger.info('{} timed out when creating new session.'.format(message.author.display_name))
             await message.channel.send('{} timed out when creating new session.'.format(message.author.display_name), delete_after=5.0)
@@ -798,10 +799,10 @@ async def on_raw_reaction_add(payload):
                 post.tentative = list_of_tentative
                 post.confirmed = list_of_confirm
                 post.save()
-                await chnl.set_permissions(member, overwrite=None)
-                await chnl.send('{} has left the chat.'.format(member.mention))
                 try:
                     await message.remove_reaction('👍', member)
+                    await chnl.set_permissions(member, overwrite=None)
+                    await chnl.send('{} has left the chat.'.format(member.mention))
                 except discord.errors.HTTPException:
                     pass
         elif emoji_add == '💫':
@@ -835,11 +836,11 @@ async def on_raw_reaction_remove(payload):
             try:
                 embed = message.embeds[0]
                 post = Lfg.objects(message_id=message_id).first()
-                chnl_id = post.channel_id
-                chnl = await client.fetch_channel(chnl_id)
                 if post is None:
                     return
                 list_of_players = post.confirmed
+                chnl_id = post.channel_id
+                chnl = await client.fetch_channel(chnl_id)
                 if payload.user_id in list_of_players:
                     list_of_players.remove(payload.user_id)
                     player_list = []
@@ -853,6 +854,7 @@ async def on_raw_reaction_remove(payload):
                     post.confirmed = list_of_players
                     post.save()
                     await chnl.set_permissions(user, overwrite=None)
+                    await chnl.send('{} has left the chat.'.format(user.mention))
             except discord.errors.HTTPException:
                 pass
 
