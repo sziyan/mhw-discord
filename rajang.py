@@ -35,8 +35,8 @@ async def addlfg(message, lfg_type, description, member, time):
             e.set_thumbnail(url='https://ih0.redbubble.net/image.551722156.9913/flat,550x550,075,f.u3.jpg')
     e.set_footer(text='|👍 - Confirm |❔ - Tentative | ❌ - Delete | 🚧 - Update |')
     e.set_author(name=member.display_name, icon_url=member.avatar_url)
-    #msg = await quest_board_channel.send(embed=e)
-    msg = await message.channel.send(embed=e)
+    msg = await quest_board_channel.send(embed=e)
+    #msg = await message.channel.send(embed=e)
     await msg.add_reaction('👍')
     await msg.add_reaction('❔')
     await msg.add_reaction('❌')
@@ -45,15 +45,16 @@ async def addlfg(message, lfg_type, description, member, time):
     category = quest_placeholder.category
     guild = message.guild
     mods = guild.get_role(706466087356727339)
+    veteran = guild.get_role(706481118152491061)
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
         member: discord.PermissionOverwrite(read_messages=True, send_messages=True, embed_links=True,
                                             create_instant_invite=False, add_reactions=True),
+        veteran: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,
+                                          send_messages=True, manage_messages=True, embed_links=True)
         client.user: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,
-                                                 # bot permissions
                                                  send_messages=True, manage_messages=True, embed_links=True),
         mods: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,
-                                          # mods permissions
                                           send_messages=True, manage_messages=True, embed_links=True)
     }
     channel_name = ('-').join(description.split())
@@ -801,8 +802,8 @@ async def on_raw_reaction_add(payload):
                 post.save()
                 try:
                     await message.remove_reaction('👍', member)
-                    await chnl.set_permissions(member, overwrite=None)
-                    await chnl.send('{} has left the chat.'.format(member.mention))
+                    await chnl.set_permissions(member, read_messages=True, send_messages=True, embed_links=True, create_instant_invite=False,add_reactions=True)
+                    await chnl.send('{} has joined the chat.'.format(member.mention))
                 except discord.errors.HTTPException:
                     pass
         elif emoji_add == '💫':
@@ -865,6 +866,8 @@ async def on_raw_reaction_remove(payload):
                 if post is None:
                     return
                 list_of_tentative = post.tentative
+                chnl_id = post.channel_id
+                chnl = await client.fetch_channel(chnl_id)
                 if payload.user_id in list_of_tentative:
                     list_of_tentative.remove(payload.user_id)
                     tentative_list = []
@@ -879,6 +882,8 @@ async def on_raw_reaction_remove(payload):
                     await message.edit(embed=embed)
                     post.tentative = list_of_tentative
                     post.save()
+                    await chnl.set_permissions(user, overwrite=None)
+                    await chnl.send('{} has left the chat.'.format(user.mention))
             except discord.errors.HTTPException:
                 pass
 
