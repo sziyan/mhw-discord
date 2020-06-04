@@ -51,7 +51,7 @@ async def addlfg(message, lfg_type, description, member, time):
         member: discord.PermissionOverwrite(read_messages=True, send_messages=True, embed_links=True,
                                             create_instant_invite=False, add_reactions=True),
         veteran: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,
-                                          send_messages=True, manage_messages=True, embed_links=True)
+                                          send_messages=True, manage_messages=True, embed_links=True),
         client.user: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,
                                                  send_messages=True, manage_messages=True, embed_links=True),
         mods: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,
