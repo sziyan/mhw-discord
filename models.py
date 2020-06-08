@@ -8,6 +8,7 @@ class Lfg(Document):
     time = StringField()
     lfg_type = StringField()
     channel_id = IntField()
+    pin_msg_id = IntField()
 
 class Player(Document):
     player_id = IntField(required=True)
@@ -17,3 +18,7 @@ class Player(Document):
     available = BooleanField(default=False)
 
     meta = {'queryset_class': GuidingLandsQuery}
+
+class Session(Document):
+    session_id = StringField(required=True)
+    report_player = ListField(IntField())

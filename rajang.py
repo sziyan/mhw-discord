@@ -21,28 +21,8 @@ MOD_ROLE_ID = [706468834235645954, 100920245190946816]
 GUIDING_LANDS = ['forest', 'wildspire', 'coral', 'rotted', 'volcanic', 'tundra']
 
 async def addlfg(message, remarks, lfg_type, description, member, time):
-    quest_board_channel = message.guild.get_channel(708369949831200841)
-    lfg_description = '```fix\n{}\n```'.format(description)
-    e = discord.Embed(description=lfg_description, color=discord.Color.red())
-    e.add_field(name='Remarks', value=remarks)
-    e.add_field(name='Time (GMT+8)', value=time, inline=False)
-    if lfg_type == 'siege':
-        if description == "Safi'jiiva":
-            e.set_thumbnail(
-                url='https://vignette.wikia.nocookie.net/monsterhunter/images/f/fa/MHWI-Safi%27jiiva_Icon.png/revision/latest/scale-to-width-down/340?cb=20191207161325')
-        else:
-            e.set_thumbnail(url='https://ih0.redbubble.net/image.551722156.9913/flat,550x550,075,f.u3.jpg')
-    e.set_author(name=member.display_name, icon_url=member.avatar_url)
-    e.add_field(name='Confirmed: 1', value=member.display_name, inline=True)
-    e.add_field(name='Tentative: 0', value='-', inline=True)
-    e.set_footer(text='|👍 - Confirm |❔ - Tentative | ❌ - Delete | 🚧 - Update |')
-    # msg = await quest_board_channel.send(embed=e)
-    msg = await message.channel.send(embed=e)
-    await msg.add_reaction('👍')
-    await msg.add_reaction('❔')
-    await msg.add_reaction('❌')
-    await msg.add_reaction('🚧')
-
+    now = datetime.datetime.now().strftime('%I:%M %p')
+    ## Create lfg channel
     quest_placeholder = await client.fetch_channel(718020166163628103)
     category = quest_placeholder.category
     guild = message.guild
@@ -60,12 +40,37 @@ async def addlfg(message, remarks, lfg_type, description, member, time):
                                           send_messages=True, manage_messages=True, embed_links=True)
     }
     channel_name = ('-').join(description.split())
+
+
+    quest_board_channel = message.guild.get_channel(708369949831200841)
+    lfg_description = '```fix\n{}\n```'.format(description)
+    e = discord.Embed(description=lfg_description, color=discord.Color.red())
+    e.add_field(name='Remarks', value=remarks, inline=False)
+    e.add_field(name='Time (GMT+8)', value=time, inline=False)
+    if lfg_type == 'siege':
+        if description == "Safi'jiiva":
+            e.set_thumbnail(
+                url='https://vignette.wikia.nocookie.net/monsterhunter/images/f/fa/MHWI-Safi%27jiiva_Icon.png/revision/latest/scale-to-width-down/340?cb=20191207161325')
+        else:
+            e.set_thumbnail(url='https://ih0.redbubble.net/image.551722156.9913/flat,550x550,075,f.u3.jpg')
+    e.set_author(name=member.display_name, icon_url=member.avatar_url)
+    e.add_field(name='Confirmed: 1', value=member.display_name, inline=True)
+    e.add_field(name='Tentative: 0', value='-', inline=True)
+    e.set_footer(text='Added on {} GMT+8'.format(now))
     if remarks == '--':
-        remarks = ""
+        remarks = ""    #if remarks is empty will set it to empty
     lfg_channel = await guild.create_text_channel(channel_name, topic=remarks, overwrites=overwrites, category=category)
+    lfg_channel_pin = await lfg_channel.send(embed=e)   #Creating first post in lfg private channel before adding footer
+    await lfg_channel_pin.pin()
+    # msg = await quest_board_channel.send(embed=e)
+    msg = await message.channel.send(embed=e)
+    await msg.add_reaction('👍')
+    await msg.add_reaction('❔')
+    await msg.add_reaction('❌')
+    await msg.add_reaction('🚧')
     await lfg_channel.send('{} has joined the chat.'.format(member.mention))
 
-    lfg_session = Lfg(message_id=msg.id, confirmed=[member.id], lfg_type=lfg_type, channel_id=lfg_channel.id)
+    lfg_session = Lfg(message_id=msg.id, confirmed=[member.id], lfg_type=lfg_type, channel_id=lfg_channel.id, pin_msg_id = lfg_channel_pin.id)
     lfg_session.save()
     await message.channel.send('LFG has been posted at {}.'.format(quest_board_channel.mention), delete_after=5.0)
     logger.info('{} added {}.'.format(member.display_name, lfg_type))
@@ -532,7 +537,7 @@ async def on_raw_reaction_add(payload):
             cemoji = await message.guild.fetch_emoji(707790768324083732)
             lfg_type = 'event'
             try:
-                prompt_event_title = await message.channel.send('{} Whats the objective?(Type `cancel` to stop)'.format(member.mention), delete_after=60.0)
+                prompt_event_title = await message.channel.send('{} Whats the objective?(Type `cancel` to stop)'.format(member.mention), delete_after=60.0)     #Objectives
                 def check_event(m):
                     return m.author == member and m.channel == channel
                 event_title = await client.wait_for('message', check=check_event, timeout=60.0)
@@ -542,7 +547,7 @@ async def on_raw_reaction_add(payload):
                     await message.channel.send('{}, objective is too long! Make sure it is less than 100 characters'.format(member.mention),delete_after=5.0)
                     return
                 remarks_prompt = await message.channel.send(
-                    '{}, any additional remarks? (Type `skip` to skip)'.format(member.mention))
+                    '{}, any additional remarks? (Type `skip` to skip)'.format(member.mention))     #REMARKS
                 def check_remarks(m):
                     return m.author == member and m.channel == channel
                 remarks = await client.wait_for('message', check=check_remarks, timeout=120)
@@ -626,6 +631,7 @@ async def on_raw_reaction_add(payload):
                     pass
 
         elif emoji_add == '👍':      #join lfg quest/siege
+            now = datetime.datetime.now().strftime('%I:%M %p')
             member = payload.member
             post = Lfg.objects(message_id=payload.message_id).first()
             list_of_confirm = post.confirmed
@@ -633,6 +639,7 @@ async def on_raw_reaction_add(payload):
             chnl_id = post.channel_id
             chnl = await client.fetch_channel(chnl_id)
             embed = message.embeds[0]
+            lfg_channel_pin = await chnl.fetch_message(post.pin_msg_id)
 
             if post is None:
                 return
@@ -668,9 +675,11 @@ async def on_raw_reaction_add(payload):
                 no_of_tentative = len(list_of_tentative)
                 if no_of_tentative == 0:
                     tentative_players = '--'
-                embed.set_field_at(1, name='Confirmed: {}'.format(no_of_confirm), value=confirmed_players, inline=True)
-                embed.set_field_at(2, name='Tentative: {}'.format(no_of_tentative), value=tentative_players, inline=True)
+                embed.set_field_at(2, name='Confirmed: {}'.format(no_of_confirm), value=confirmed_players, inline=True)
+                embed.set_field_at(3, name='Tentative: {}'.format(no_of_tentative), value=tentative_players, inline=True)
+                embed.set_footer(text='Updated on {} GMT+8'.format(now))
                 await message.edit(embed=embed)
+                await lfg_channel_pin.edit(embed=embed)
                 post.confirmed = list_of_confirm
                 post.tentative = list_of_tentative
                 post.save()
@@ -797,6 +806,7 @@ async def on_raw_reaction_add(payload):
                 await message.remove_reaction('🚧', member)
 
         elif emoji_add == '❔':  #tentative for quest
+            now = datetime.datetime.now().strftime('%I:%M %p')
             member = payload.member
             embed = message.embeds[0]
             post = Lfg.objects(message_id=payload.message_id).first()
@@ -804,6 +814,7 @@ async def on_raw_reaction_add(payload):
             chnl = await client.fetch_channel(chnl_id)
             list_of_tentative = post.tentative
             list_of_confirm = post.confirmed
+            lfg_channel_pin = await chnl.fetch_message(post.pin_msg_id)
             if post is None:
                 return
             if len(post.confirmed) <=1 and member.id == post.confirmed[0]: #make sure theres at least 1 player in confirmed
@@ -829,9 +840,11 @@ async def on_raw_reaction_add(payload):
                 no_of_confirm = len(confirm_list)   #get number of confirm
                 tentative_players = '\n'.join(tentative_list)
                 confirm_players = '\n'.join(confirm_list)
-                embed.set_field_at(1,name='Confirmed: {}'.format(no_of_confirm), value=confirm_players, inline=True)
-                embed.set_field_at(2, name='Tentative: {}'.format(no_of_tentative), value=tentative_players, inline=True)
+                embed.set_field_at(2,name='Confirmed: {}'.format(no_of_confirm), value=confirm_players, inline=True)
+                embed.set_field_at(3, name='Tentative: {}'.format(no_of_tentative), value=tentative_players, inline=True)
+                embed.set_footer(text='Updated on {} GMT+8'.format(now))
                 await message.edit(embed=embed)
+                await lfg_channel_pin.edit(embed=embed)
                 post.tentative = list_of_tentative
                 post.confirmed = list_of_confirm
                 post.save()
@@ -839,6 +852,7 @@ async def on_raw_reaction_add(payload):
                     await message.remove_reaction('👍', member)
                 except discord.errors.HTTPException:
                     pass
+
         elif emoji_add == '💫':
             await message.delete()
             await message.channel.send('Reported log resolved by {}..'.format(payload.member.mention), delete_after=5.0)
@@ -867,6 +881,7 @@ async def on_raw_reaction_remove(payload):
 
     if emoji_remove in list_of_reactions:
         if emoji_remove == '👍':
+            now = datetime.datetime.now().strftime('%I:%M %p')
             try:
                 embed = message.embeds[0]
                 post = Lfg.objects(message_id=message_id).first()
@@ -875,6 +890,7 @@ async def on_raw_reaction_remove(payload):
                 list_of_players = post.confirmed
                 chnl_id = post.channel_id
                 chnl = await client.fetch_channel(chnl_id)
+                lfg_channel_pin = await chnl.fetch_message(post.pin_msg_id)
                 if payload.user_id in list_of_players:
                     list_of_players.remove(payload.user_id)
                     player_list = []
@@ -883,8 +899,10 @@ async def on_raw_reaction_remove(payload):
                         player_list.append(member.display_name)
                     new_players = ('\n').join(player_list)
                     no_of_players = len(player_list)
-                    embed.set_field_at(1, name='Confirmed: {}'.format(no_of_players), value=new_players, inline=True)
+                    embed.set_field_at(2, name='Confirmed: {}'.format(no_of_players), value=new_players, inline=True)
+                    embed.set_footer(text='Updated on {} GMT+8'.format(now))
                     await message.edit(embed=embed)
+                    await lfg_channel_pin.edit(embed=embed)
                     post.confirmed = list_of_players
                     post.save()
                     await chnl.set_permissions(user, overwrite=None)
@@ -896,11 +914,13 @@ async def on_raw_reaction_remove(payload):
             try:
                 embed = message.embeds[0]
                 post = Lfg.objects(message_id=message_id).first()
+                now = datetime.datetime.now().strftime('%I:%M %p')
                 if post is None:
                     return
                 list_of_tentative = post.tentative
                 chnl_id = post.channel_id
                 chnl = await client.fetch_channel(chnl_id)
+                lfg_channel_pin = await chnl.fetch_message(post.pin_msg_id)
                 if payload.user_id in list_of_tentative:
                     list_of_tentative.remove(payload.user_id)
                     tentative_list = []
@@ -911,8 +931,10 @@ async def on_raw_reaction_remove(payload):
                     no_of_tentative = len(tentative_list)
                     if no_of_tentative == 0:
                         tentative_players = '--'
-                    embed.set_field_at(2, name='Tentative: {}'.format(no_of_tentative), value=tentative_players, inline=True)
+                    embed.set_field_at(3, name='Tentative: {}'.format(no_of_tentative), value=tentative_players, inline=True)
+                    embed.set_footer(text='Updated on {} GMT+8'.format(now))
                     await message.edit(embed=embed)
+                    await lfg_channel_pin.edit(embed=embed)
                     post.tentative = list_of_tentative
                     post.save()
                     await chnl.set_permissions(user, overwrite=None)
