@@ -62,8 +62,8 @@ async def addlfg(message, remarks, lfg_type, description, member, time):
     lfg_channel = await guild.create_text_channel(channel_name, topic=remarks, overwrites=overwrites, category=category)
     lfg_channel_pin = await lfg_channel.send(embed=e)   #Creating first post in lfg private channel before adding footer
     await lfg_channel_pin.pin()
-    # msg = await quest_board_channel.send(embed=e)
-    msg = await message.channel.send(embed=e)
+    msg = await quest_board_channel.send(embed=e)
+    #msg = await message.channel.send(embed=e)
     await msg.add_reaction('👍')
     await msg.add_reaction('❔')
     await msg.add_reaction('❌')
