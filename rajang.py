@@ -20,7 +20,7 @@ db = connect('sg', host=Config.host)
 MOD_ROLE_ID = [706468834235645954, 100920245190946816]
 GUIDING_LANDS = ['forest', 'wildspire', 'coral', 'rotted', 'volcanic', 'tundra']
 
-async def addlfg(message, remarks, lfg_type, description, member, time):
+async def addlfg(message, lfg_type, description, member, time, remarks='--'):
     now = datetime.datetime.now().strftime('%I:%M %p')
     ## Create lfg channel
     quest_placeholder = await client.fetch_channel(718020166163628103)
