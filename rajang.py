@@ -20,46 +20,59 @@ db = connect('sg', host=Config.host)
 MOD_ROLE_ID = [706468834235645954, 100920245190946816]
 GUIDING_LANDS = ['forest', 'wildspire', 'coral', 'rotted', 'volcanic', 'tundra']
 
-async def addlfg(message, lfg_type, description, member, time):
+async def addlfg(message, lfg_type, description, member, time, remarks='--'):
+    now = datetime.datetime.now().strftime('%I:%M %p')
+    ## Create lfg channel
+    quest_placeholder = await client.fetch_channel(718020166163628103)
+    category = quest_placeholder.category
+    guild = message.guild
+    mods = guild.get_role(706466087356727339)
+    veteran = guild.get_role(706481118152491061)
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(read_messages=False),
+        member: discord.PermissionOverwrite(read_messages=True, send_messages=True, embed_links=True,
+                                            create_instant_invite=False, add_reactions=True),
+        veteran: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,
+                                             send_messages=True, manage_messages=True, embed_links=True),
+        client.user: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,
+                                                 send_messages=True, manage_messages=True, embed_links=True),
+        mods: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,
+                                          send_messages=True, manage_messages=True, embed_links=True)
+    }
+    channel_name = ('-').join(description.split())
+
+
     quest_board_channel = message.guild.get_channel(708369949831200841)
     lfg_description = '```fix\n{}\n```'.format(description)
     e = discord.Embed(description=lfg_description, color=discord.Color.red())
+    e.add_field(name='Remarks', value=remarks, inline=False)
     e.add_field(name='Time (GMT+8)', value=time, inline=False)
-    e.add_field(name='Confirmed: 1', value=member.display_name, inline=True)
-    e.add_field(name='Tentative: 0', value='-', inline=True)
     if lfg_type == 'siege':
         if description == "Safi'jiiva":
             e.set_thumbnail(
                 url='https://vignette.wikia.nocookie.net/monsterhunter/images/f/fa/MHWI-Safi%27jiiva_Icon.png/revision/latest/scale-to-width-down/340?cb=20191207161325')
         else:
             e.set_thumbnail(url='https://ih0.redbubble.net/image.551722156.9913/flat,550x550,075,f.u3.jpg')
-    e.set_footer(text='|👍 - Confirm |❔ - Tentative | ❌ - Delete | 🚧 - Update |')
     e.set_author(name=member.display_name, icon_url=member.avatar_url)
+    e.add_field(name='Confirmed: 1', value=member.display_name, inline=True)
+    e.add_field(name='Tentative: 0', value='-', inline=True)
+    e.set_footer(text='Added on {} GMT+8'.format(now))
+    if remarks == '--':
+        remarks = ""    #if remarks is empty will set it to empty
+    lfg_channel = await guild.create_text_channel(channel_name, topic=remarks, overwrites=overwrites, category=category)
+    lfg_channel_pin = await lfg_channel.send(embed=e)   #Creating first post in lfg private channel before adding footer
+    await lfg_channel_pin.pin()
     msg = await quest_board_channel.send(embed=e)
     #msg = await message.channel.send(embed=e)
     await msg.add_reaction('👍')
     await msg.add_reaction('❔')
     await msg.add_reaction('❌')
     await msg.add_reaction('🚧')
-    await message.channel.send('LFG has been posted at {}.'.format(quest_board_channel.mention), delete_after=5.0)
-    category = message.channel.category
-    guild = message.guild
-    mods = guild.get_role(706466087356727339)
-    veterans = guild.get_role(706481118152491061)
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        member: discord.PermissionOverwrite(read_messages=True, send_messages=True, embed_links=True, create_instant_invite=False,add_reactions=True),
-        veterans: discord.PermissionOverwrite(read_messages=True, send_messages=True, embed_links=True, create_instant_invite=False,add_reactions=True),
-        client.user: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,     #bot permissions
-                                                 send_messages=True,manage_messages=True, embed_links=True),
-        mods: discord.PermissionOverwrite(manage_permissions=True, manage_channels=True, read_messages=True,           #mods permissions
-                                                 send_messages=True,manage_messages=True, embed_links=True)
-    }
-    channel_name = ('-').join(description.split())
-    lfg_channel = await guild.create_text_channel(channel_name, overwrites=overwrites, category=category)
-    lfg_session = Lfg(message_id=msg.id, confirmed=[member.id], lfg_type=lfg_type, channel_id=lfg_channel.id)
-    lfg_session.save()
     await lfg_channel.send('{} has joined the chat.'.format(member.mention))
+
+    lfg_session = Lfg(message_id=msg.id, confirmed=[member.id], lfg_type=lfg_type, channel_id=lfg_channel.id, pin_msg_id = lfg_channel_pin.id)
+    lfg_session.save()
+    await message.channel.send('LFG has been posted at {}.'.format(quest_board_channel.mention), delete_after=5.0)
     logger.info('{} added {}.'.format(member.display_name, lfg_type))
 
 async def check_mod(guild, member, baseline=None):
@@ -241,38 +254,33 @@ async def on_message(message):
         now = datetime.datetime.now().strftime('%d %b %I:%M %p')
         prompt_session_id, prompt_session_title, session_id_reply, session_title_reply = None,None,None,None
         try:
-            content = message.content[12:]
-            if content == "":
-                prompt_session_id = await message.channel.send('Creating session.. Whats the session ID?', delete_after=90.0)
-                def check_session_id(m):
-                    return m.channel == message.channel and m.author == message.author
-                session_id_reply = await client.wait_for('message', check=check_session_id, timeout=90.0)
-                session = session_id_reply.content
+            prompt_session_id = await message.channel.send('Creating session.. Whats the session ID?', delete_after=90.0)
+            def check_session_id(m):
+                return m.channel == message.channel and m.author == message.author
+            session_id_reply = await client.wait_for('message', check=check_session_id, timeout=90.0)
+            session = session_id_reply.content
 
-                prompt_session_title = await message.channel.send('Enter session description? (Type `cancel` if no description)', delete_after=90.0)
-                def check_session_title(m):
-                    return m.channel == message.channel and m.author == message.author
-                session_title_reply = await client.wait_for('message', check=check_session_title, timeout=90.0)
+            prompt_session_title = await message.channel.send('Enter session description? (Type `cancel` if no description)', delete_after=90.0)
+            def check_session_title(m):
+                return m.channel == message.channel and m.author == message.author
+            session_title_reply = await client.wait_for('message', check=check_session_title, timeout=90.0)
 
-                if session_title_reply.content.lower() == 'cancel':
-                    session_title = 'Monster Hunting'
-                else:
-                    session_title = session_title_reply.content
-
-                await message.channel.send('Session created in {}'.format(channel.mention), delete_after=5.0)
-                title = '{}'.format(session_title)
-                session_id = '```fix\n{}```'.format(session)
-                embed = discord.Embed(description='```yaml\n{}```'.format(title), color=0xf1c40f)
-                embed.add_field(name='Session ID', value=session_id)
-                embed.set_footer(text='Added on {}'.format(now))
-                embed.set_author(name=message.author.display_name, icon_url=message.author.avatar_url)
-                msg = await channel.send(embed=embed)
-                cemoji = await message.guild.fetch_emoji(707541604508106818)  # custom emoji to mark session close
-                await msg.add_reaction(cemoji)
-                logger.info('{} added session "{}"'.format(message.author.display_name, session))
+            if session_title_reply.content.lower() == 'cancel':
+                session_title = '--'
             else:
-                await message.channel.send('{}, incorrect command syntax. Please use `/addsession` instead.'.format(message.author.mention), delete_after= 10.0)
-                return
+                session_title = session_title_reply.content
+
+            await message.channel.send('Session created in {}'.format(channel.mention), delete_after=5.0)
+            title = '{}'.format(session_title)
+            session_id = '```fix\n{}```'.format(session)
+            embed = discord.Embed(description='```yaml\n{}```'.format(title), color=0xf1c40f)
+            embed.add_field(name='Session ID', value=session_id)
+            embed.set_footer(text='Added on {}'.format(now))
+            embed.set_author(name=message.author.display_name, icon_url=message.author.avatar_url)
+            msg = await channel.send(embed=embed)
+            cemoji = await message.guild.fetch_emoji(707541604508106818)  # custom emoji to mark session close
+            await msg.add_reaction(cemoji)
+            logger.info('{} added session "{}"'.format(message.author.display_name, session))
         except asyncio.TimeoutError:
             logger.info('{} timed out when creating new session.'.format(message.author.display_name))
             await message.channel.send('{} timed out when creating new session.'.format(message.author.display_name), delete_after=5.0)
@@ -529,22 +537,36 @@ async def on_raw_reaction_add(payload):
             cemoji = await message.guild.fetch_emoji(707790768324083732)
             lfg_type = 'event'
             try:
-                prompt_event_title = await message.channel.send('{} Whats the objective?(Type `cancel` to stop)'.format(member.mention), delete_after=60.0)
+                prompt_event_title = await message.channel.send('{} Whats the objective?(Type `cancel` to stop)'.format(member.mention), delete_after=60.0)     #Objectives
                 def check_event(m):
                     return m.author == member and m.channel == channel
                 event_title = await client.wait_for('message', check=check_event, timeout=60.0)
                 if event_title.content.lower() == 'cancel':
                     return
-                prompt_time = await message.channel.send('{} What time is preferred?(Type `NA` if no preference, `cancel` to stop.)'.format(member.mention), delete_after=60.0)
+                elif len(('-').join(event_title.content.lower().split())) > 100:
+                    await message.channel.send('{}, objective is too long! Make sure it is less than 100 characters'.format(member.mention),delete_after=5.0)
+                    return
+                remarks_prompt = await message.channel.send(
+                    '{}, any additional remarks? (Type `skip` to skip)'.format(member.mention))     #REMARKS
+                def check_remarks(m):
+                    return m.author == member and m.channel == channel
+                remarks = await client.wait_for('message', check=check_remarks, timeout=120)
+                if remarks.content.lower() == 'skip':
+                    remarks.content = '--'
+                elif remarks.content.lower() == 'cancel':
+                    await message.channel.send('{}, post creation cancelled.'.format(member.mention))
+                    return
+                prompt_time = await message.channel.send('{} What time is preferred?(Type `skip` if no preference, `cancel` to stop.)'.format(member.mention), delete_after=60.0)
                 def check_time(m):
                     return m.author == member and m.channel == message.channel
                 event_time = await client.wait_for('message', check=check_time, timeout=60.0)
                 if event_time.content.lower() == 'cancel':
                     await event_time.delete()
                     return
-                elif event_time.content.lower() == 'na':
+                elif event_time.content.lower() == 'skip':
                     event_time.content = '{} to contact participants.'.format(member.mention)
-                await addlfg(message=message, lfg_type=lfg_type,description=event_title.content,member=member, time=event_time.content)
+
+                await addlfg(message=message, remarks = remarks.content.lower(), lfg_type=lfg_type,description=event_title.content,member=member, time=event_time.content)
             except asyncio.TimeoutError:
                 await message.channel.send('Creating of post timed out. Please try again.', delete_after=5.0)
                 logging.info('{} timed out when creating new event.'.format(member.mention))
@@ -556,6 +578,8 @@ async def on_raw_reaction_add(payload):
                     await event_title.delete()
                     await prompt_time.delete()
                     await event_time.delete()
+                    await remarks_prompt.delete()
+                    await remarks.delete()
                 except discord.errors.NotFound:
                     pass
                 except UnboundLocalError:
@@ -607,6 +631,7 @@ async def on_raw_reaction_add(payload):
                     pass
 
         elif emoji_add == '👍':      #join lfg quest/siege
+            now = datetime.datetime.now().strftime('%I:%M %p')
             member = payload.member
             post = Lfg.objects(message_id=payload.message_id).first()
             list_of_confirm = post.confirmed
@@ -614,6 +639,7 @@ async def on_raw_reaction_add(payload):
             chnl_id = post.channel_id
             chnl = await client.fetch_channel(chnl_id)
             embed = message.embeds[0]
+            lfg_channel_pin = await chnl.fetch_message(post.pin_msg_id)
 
             if post is None:
                 return
@@ -625,6 +651,13 @@ async def on_raw_reaction_add(payload):
                     except discord.errors.HTTPException:
                         pass
                     return
+                if member.id not in list_of_confirm and member.id not in list_of_tentative:
+                    try:  # add member to quest text channel
+                        await chnl.set_permissions(member, read_messages=True, send_messages=True, embed_links=True,
+                                                   create_instant_invite=False, add_reactions=True)
+                        await chnl.send('{} has joined chat'.format(member.mention))
+                    except discord.NotFound:
+                        pass
                 list_of_confirm.append(member.id)   #add player into confirmed list
                 if member.id in list_of_tentative:
                     list_of_tentative.remove(member.id)
@@ -642,17 +675,14 @@ async def on_raw_reaction_add(payload):
                 no_of_tentative = len(list_of_tentative)
                 if no_of_tentative == 0:
                     tentative_players = '--'
-                embed.set_field_at(1, name='Confirmed: {}'.format(no_of_confirm), value=confirmed_players, inline=True)
-                embed.set_field_at(2, name='Tentative: {}'.format(no_of_tentative), value=tentative_players, inline=True)
+                embed.set_field_at(2, name='Confirmed: {}'.format(no_of_confirm), value=confirmed_players, inline=True)
+                embed.set_field_at(3, name='Tentative: {}'.format(no_of_tentative), value=tentative_players, inline=True)
+                embed.set_footer(text='Updated on {} GMT+8'.format(now))
                 await message.edit(embed=embed)
+                await lfg_channel_pin.edit(embed=embed)
                 post.confirmed = list_of_confirm
                 post.tentative = list_of_tentative
                 post.save()
-                try:    #add member to quest text channel
-                    await chnl.set_permissions(member, read_messages=True, send_messages=True, embed_links=True, create_instant_invite=False,add_reactions=True)
-                    await chnl.send('{} has joined chat'.format(member.mention))
-                except discord.NotFound:
-                    pass
                 try:
                     await message.remove_reaction('❔', member)
                 except discord.errors.HTTPException:
@@ -712,17 +742,28 @@ async def on_raw_reaction_add(payload):
             if member.id == host:
                 try:
                     await message.channel.send('{}, a PM has been sent to you to update your post.'.format(member.mention), delete_after=5.0)
-                    await dm_channel.send('What is the updated message? (Type `NA` to skip, `cancel` to quit)')
+                    await dm_channel.send('What is the updated message? (Type `skip` to skip, `cancel` to quit)')
                     def check_desc(m):
                         return m.author == member and m.channel == dm_channel
 
                     new_description = await client.wait_for('message', check=check_desc, timeout=120.0)
-                    if new_description.content.lower() == 'na':
+                    if new_description.content.lower() == 'skip':
                         description = None
                     elif new_description.content == 'cancel':
                         return
                     else:
                         description = new_description.content
+
+                    await dm_channel.send('What is the updated remarks?(Type `skip` to skip, `cancel` to cancel)')
+                    def check_remarks(m):
+                        return m.author == member and m.channel == dm_channel
+                    new_remarks = await client.wait_for('message', check=check_remarks, timeout=120)
+                    if new_remarks.content.lower() == 'skip':
+                        remarks = None
+                    elif new_remarks.content.lower() == 'cancel':
+                        return
+                    else:
+                        remarks = new_remarks.content.lower()
 
                     await dm_channel.send('What is the new time? (Type `NA` to skip, `cancel` to quit)')
                     def check_time(m):
@@ -739,9 +780,11 @@ async def on_raw_reaction_add(payload):
                     if description is not None:
                         embed.description = '```fix\n{}\n```'.format(description)
                         await chnl.edit(name='-'.join(description.split()))
+                    if remarks is not None:
+                        embed.set_field_at(0, name='Remarks', value=remarks)
                     if time is not None:
-                        embed.set_field_at(0, name='Time:', value=time, inline=False)
-                    if description is not None or time is not None:
+                        embed.set_field_at(1, name='Time:', value=time, inline=False)
+                    if description is not None or time is not None or remarks is not None:
                         await message.edit(embed=embed)
                         questboard_chnl = message.channel
                         await dm_channel.send('Post updated in {}.'.format(questboard_chnl.mention))
@@ -763,20 +806,25 @@ async def on_raw_reaction_add(payload):
                 await message.remove_reaction('🚧', member)
 
         elif emoji_add == '❔':  #tentative for quest
+            now = datetime.datetime.now().strftime('%I:%M %p')
             member = payload.member
             embed = message.embeds[0]
             post = Lfg.objects(message_id=payload.message_id).first()
             chnl_id = post.channel_id
             chnl = await client.fetch_channel(chnl_id)
             list_of_tentative = post.tentative
+            list_of_confirm = post.confirmed
+            lfg_channel_pin = await chnl.fetch_message(post.pin_msg_id)
             if post is None:
                 return
             if len(post.confirmed) <=1 and member.id == post.confirmed[0]: #make sure theres at least 1 player in confirmed
                 await message.remove_reaction('❔', member)
                 return
-
+            if member.id not in list_of_tentative and member.id not in list_of_confirm:
+                await chnl.set_permissions(member, read_messages=True, send_messages=True, embed_links=True,
+                                           create_instant_invite=False, add_reactions=True)
+                await chnl.send('{} has joined the chat.'.format(member.mention))
             if member.id not in list_of_tentative:
-                list_of_confirm = post.confirmed
                 if member.id in list_of_confirm:
                     list_of_confirm.remove(member.id)   #remove player from confirmed list
                 list_of_tentative.append(member.id) #add player to tentative list
@@ -792,18 +840,19 @@ async def on_raw_reaction_add(payload):
                 no_of_confirm = len(confirm_list)   #get number of confirm
                 tentative_players = '\n'.join(tentative_list)
                 confirm_players = '\n'.join(confirm_list)
-                embed.set_field_at(1,name='Confirmed: {}'.format(no_of_confirm), value=confirm_players, inline=True)
-                embed.set_field_at(2, name='Tentative: {}'.format(no_of_tentative), value=tentative_players, inline=True)
+                embed.set_field_at(2,name='Confirmed: {}'.format(no_of_confirm), value=confirm_players, inline=True)
+                embed.set_field_at(3, name='Tentative: {}'.format(no_of_tentative), value=tentative_players, inline=True)
+                embed.set_footer(text='Updated on {} GMT+8'.format(now))
                 await message.edit(embed=embed)
+                await lfg_channel_pin.edit(embed=embed)
                 post.tentative = list_of_tentative
                 post.confirmed = list_of_confirm
                 post.save()
-                await chnl.set_permissions(member, overwrite=None)
-                await chnl.send('{} has left the chat.'.format(member.mention))
                 try:
                     await message.remove_reaction('👍', member)
                 except discord.errors.HTTPException:
                     pass
+
         elif emoji_add == '💫':
             await message.delete()
             await message.channel.send('Reported log resolved by {}..'.format(payload.member.mention), delete_after=5.0)
@@ -832,14 +881,16 @@ async def on_raw_reaction_remove(payload):
 
     if emoji_remove in list_of_reactions:
         if emoji_remove == '👍':
+            now = datetime.datetime.now().strftime('%I:%M %p')
             try:
                 embed = message.embeds[0]
                 post = Lfg.objects(message_id=message_id).first()
-                chnl_id = post.channel_id
-                chnl = await client.fetch_channel(chnl_id)
                 if post is None:
                     return
                 list_of_players = post.confirmed
+                chnl_id = post.channel_id
+                chnl = await client.fetch_channel(chnl_id)
+                lfg_channel_pin = await chnl.fetch_message(post.pin_msg_id)
                 if payload.user_id in list_of_players:
                     list_of_players.remove(payload.user_id)
                     player_list = []
@@ -848,11 +899,14 @@ async def on_raw_reaction_remove(payload):
                         player_list.append(member.display_name)
                     new_players = ('\n').join(player_list)
                     no_of_players = len(player_list)
-                    embed.set_field_at(1, name='Confirmed: {}'.format(no_of_players), value=new_players, inline=True)
+                    embed.set_field_at(2, name='Confirmed: {}'.format(no_of_players), value=new_players, inline=True)
+                    embed.set_footer(text='Updated on {} GMT+8'.format(now))
                     await message.edit(embed=embed)
+                    await lfg_channel_pin.edit(embed=embed)
                     post.confirmed = list_of_players
                     post.save()
                     await chnl.set_permissions(user, overwrite=None)
+                    await chnl.send('{} has left the chat.'.format(user.mention))
             except discord.errors.HTTPException:
                 pass
 
@@ -860,9 +914,13 @@ async def on_raw_reaction_remove(payload):
             try:
                 embed = message.embeds[0]
                 post = Lfg.objects(message_id=message_id).first()
+                now = datetime.datetime.now().strftime('%I:%M %p')
                 if post is None:
                     return
                 list_of_tentative = post.tentative
+                chnl_id = post.channel_id
+                chnl = await client.fetch_channel(chnl_id)
+                lfg_channel_pin = await chnl.fetch_message(post.pin_msg_id)
                 if payload.user_id in list_of_tentative:
                     list_of_tentative.remove(payload.user_id)
                     tentative_list = []
@@ -873,10 +931,14 @@ async def on_raw_reaction_remove(payload):
                     no_of_tentative = len(tentative_list)
                     if no_of_tentative == 0:
                         tentative_players = '--'
-                    embed.set_field_at(2, name='Tentative: {}'.format(no_of_tentative), value=tentative_players, inline=True)
+                    embed.set_field_at(3, name='Tentative: {}'.format(no_of_tentative), value=tentative_players, inline=True)
+                    embed.set_footer(text='Updated on {} GMT+8'.format(now))
                     await message.edit(embed=embed)
+                    await lfg_channel_pin.edit(embed=embed)
                     post.tentative = list_of_tentative
                     post.save()
+                    await chnl.set_permissions(user, overwrite=None)
+                    await chnl.send('{} has left the chat.'.format(user.mention))
             except discord.errors.HTTPException:
                 pass
 
