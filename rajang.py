@@ -525,8 +525,8 @@ async def on_raw_reaction_add(payload):
                 list_of_reactions.append(reaction.emoji) #if not is unicode emoji
 
     if emoji_add in list_of_reactions:
-        if emoji_add == '✅' and message_id == 706491925649424434: #rules messsage id
-            rules_message = await channel.fetch_message(706491925649424434)
+        if emoji_add == '✅' and message_id == 716886324992540762: #rules messsage id
+            rules_message = await channel.fetch_message(716886324992540762)
             member = payload.member
             guild = message.guild
             new_fiver = guild.get_role(706870296334041088)
