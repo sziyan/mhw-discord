@@ -20,5 +20,8 @@ class Player(Document):
     meta = {'queryset_class': GuidingLandsQuery}
 
 class Session(Document):
+    message_id = IntField(required=True)
     session_id = StringField(required=True)
-    report_player = ListField(IntField())
+    #report_player = ListField(IntField())
+    session_creator = IntField(required=True)
+    description = StringField()

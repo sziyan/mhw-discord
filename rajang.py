@@ -7,7 +7,7 @@ import asyncio.exceptions
 import discord.errors
 from mongoengine import connect
 import re
-from models import Lfg, Player
+from models import Lfg, Player, Session
 
 client = discord.Client()
 logging.basicConfig(level=logging.INFO, filename='discord_output.log', filemode='a', format='%(asctime)s %(levelname)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
@@ -40,7 +40,6 @@ async def addlfg(message, lfg_type, description, member, time, remarks='--'):
                                           send_messages=True, manage_messages=True, embed_links=True)
     }
     channel_name = ('-').join(description.split())
-
 
     quest_board_channel = message.guild.get_channel(708369949831200841)
     lfg_description = '```fix\n{}\n```'.format(description)
@@ -278,6 +277,8 @@ async def on_message(message):
             embed.set_footer(text='Added on {}'.format(now))
             embed.set_author(name=message.author.display_name, icon_url=message.author.avatar_url)
             msg = await channel.send(embed=embed)
+            sess = Session(session_id=session, session_creator=message.author.id, description=title, message_id=msg.id)
+            sess.save()
             cemoji = await message.guild.fetch_emoji(707541604508106818)  # custom emoji to mark session close
             await msg.add_reaction(cemoji)
             logger.info('{} added session "{}"'.format(message.author.display_name, session))
@@ -492,11 +493,11 @@ async def on_message(message):
             await new_sos_msg.delete()
             await msg_id_content.delete()
 
-    elif message.content.startswith('&mute'):
-        member_list = message.mentions
-        for member in member_list:
-            await member.edit(mute=True, reason='Muted by {}'.format(message.author.display_name))
-            await message.channel.send('{} muted by {}'.format(member.display_name, message.author.display_name))
+    # elif message.content.startswith('&mute'):
+    #     member_list = message.mentions
+    #     for member in member_list:
+    #         await member.edit(mute=True, reason='Muted by {}'.format(message.author.display_name))
+    #         await message.channel.send('{} muted by {}'.format(member.display_name, message.author.display_name))
 
 @client.event
 async def on_raw_reaction_add(payload):
@@ -547,7 +548,7 @@ async def on_raw_reaction_add(payload):
                     await message.channel.send('{}, objective is too long! Make sure it is less than 100 characters'.format(member.mention),delete_after=5.0)
                     return
                 remarks_prompt = await message.channel.send(
-                    '{}, any additional remarks? (Type `skip` to skip)'.format(member.mention))     #REMARKS
+                    '{}, any additional remarks? (Type `skip` to skip)'.format(member.mention), delete_after=60.0)     #REMARKS
                 def check_remarks(m):
                     return m.author == member and m.channel == channel
                 remarks = await client.wait_for('message', check=check_remarks, timeout=120)
@@ -580,10 +581,10 @@ async def on_raw_reaction_add(payload):
                     await event_time.delete()
                     await remarks_prompt.delete()
                     await remarks.delete()
-                except discord.errors.NotFound:
-                    pass
-                except UnboundLocalError:
-                    pass
+                except discord.errors.NotFound as error:
+                    logger.error('Error deleting message after creating event: {}'.format(error))
+                except UnboundLocalError as error:
+                    logger.error('Error deleting message after creating event: {}'.format(error))
 
         elif emoji_add == 707790900927135765:   #create siege :xenoeyes:
             cemoji = await message.guild.fetch_emoji(707790900927135765)
@@ -627,8 +628,10 @@ async def on_raw_reaction_add(payload):
                     await message.remove_reaction(cemoji, member)
                     await prompt_time.delete()
                     await siege_time.delete()
-                except discord.errors.NotFound:
-                    pass
+                except discord.errors.NotFound as error:
+                    logger.error('Error deleting message after creating siege: {}'.format(error))
+                except UnboundLocalError as error:
+                    logger.error('Error deleting message after creating siege: {}'.format(error))
 
         elif emoji_add == '👍':      #join lfg quest/siege
             now = datetime.datetime.now().strftime('%I:%M %p')
@@ -693,11 +696,12 @@ async def on_raw_reaction_add(payload):
             cemoji = await message.guild.fetch_emoji(707541604508106818)
             session = embed.fields[0].value
             session_id = re.findall("```fix\s([\w\W]+)```", session)[0]
-            author = embed.author
+            sess = Session.objects(message_id=payload.message_id).first()
+            author_id =  sess.session_creator
             mod_logs_channel = guild.get_channel(711165655939809291)
-            if author == payload.member.display_name or await check_mod(message.guild, payload.member, baseline=706481118152491061) is True:    #baseline set as veteran
-                await channel.send('Session ID deleted by {}..'.format(payload.member.mention), delete_after=5.0)
-                print(session_id)
+            if (author_id == payload.user_id) or (await check_mod(message.guild, payload.member, baseline=706481118152491061) is True):    #baseline set as veteran
+                sess.delete()
+                await channel.send('Session ID deleted by {}'.format(payload.member.mention), delete_after=5.0)
                 await message.delete()
                 logger.info('Session ID {} deleted by {}'.format(session_id, payload.member.display_name))
             else:
